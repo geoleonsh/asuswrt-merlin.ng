@@ -8472,6 +8472,10 @@ int init_nvram(void)
 	add_rc_support("dnsfilter");
 #endif
 
+#ifdef RTCONFIG_NTPD
+	add_rc_support("ntpd");
+#endif
+
 #ifdef RTCONFIG_DNSPRIVACY
 	add_rc_support("dnspriv");
 #endif
@@ -9088,7 +9092,7 @@ int init_nvram2(void)
 
 /* Remove potentially outdated data */
 	nvram_unset("webs_state_info");
-	nvram_unset("webs_state_info_beta");
+	nvram_unset("webs_state_info_am");
 	nvram_set("webs_state_flag","0");
 
 	if (restore_defaults_g)
@@ -10434,6 +10438,12 @@ int init_main(int argc, char *argv[])
 		init_others_defer();
 #endif
 
+#ifndef RTCONFIG_NVRAM_FILE
+#if !defined(RTCONFIG_TEST_BOARDDATA_FILE)
+		start_jffs2();
+#endif
+#endif
+
 		config_format_compatibility_handler();
 
 		sigemptyset(&sigset);
@@ -10442,11 +10452,6 @@ int init_main(int argc, char *argv[])
 		}
 		sigprocmask(SIG_BLOCK, &sigset, NULL);
 
-#ifndef RTCONFIG_NVRAM_FILE
-#if !defined(RTCONFIG_TEST_BOARDDATA_FILE)
-		start_jffs2();
-#endif
-#endif
 #ifdef RTCONFIG_NVRAM_ENCRYPT
 		init_enc_nvram();
 #endif
@@ -10470,7 +10475,7 @@ int init_main(int argc, char *argv[])
 		asm1042_upgrade(1);	// check whether upgrade firmware of ASM1042
 #endif
 
-		run_custom_script("init-start", NULL);
+		run_custom_script("init-start", 0, NULL, NULL);
 		setup_passwd();		// Re-apply now that jffs is up, in case of custom configs
 		use_custom_config("fstab", "/etc/fstab");
 		run_postconf("fstab", "/etc/fstab");
@@ -11092,7 +11097,7 @@ dbg("boot/continue fail= %d/%d\n", nvram_get_int("Ate_boot_fail"),nvram_get_int(
 int reboothalt_main(int argc, char *argv[])
 {
 	int reboot = (strstr(argv[0], "reboot") != NULL);
-	int def_reset_wait = 20;
+	int def_reset_wait = 30;
 
 	_dprintf(reboot ? "Rebooting..." : "Shutting down...");
 	kill(1, reboot ? SIGTERM : SIGQUIT);
@@ -11104,7 +11109,7 @@ int reboothalt_main(int argc, char *argv[])
 	int wait = nvram_get_int("reset_wait") ? : def_reset_wait;
 	/* In the case we're hung, we'll get stuck and never actually reboot.
 	 * The only way out is to pull power.
-	 * So after 'reset_wait' seconds (default: 20), forcibly crash & restart.
+	 * So after 'reset_wait' seconds (default: 30), forcibly crash & restart.
 	 */
 	if (fork() == 0) {
 		if ((wait < 10) || (wait > 120)) wait = 10;

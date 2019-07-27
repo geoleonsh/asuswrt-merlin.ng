@@ -68,10 +68,13 @@ $(function () {
 	}
 });
 
-var vpnc_dev_policy_list_array = []
+var vpnc_dev_policy_list_array = [];
 var vpnc_dev_policy_list_array_ori = [];
 
-var dhcp_staticlist_array = "<% nvram_get("dhcp_staticlist"); %>";
+var dhcp_staticlist_array = "";
+
+var dhcp_hostnames = "<% nvram_get("dhcp_hostnames"); %>";
+var dhcp_hostnames_row = dhcp_hostnames.split("&#60");
 
 if(pptpd_support){
 	var pptpd_clients = '<% nvram_get("pptpd_clients"); %>';
@@ -126,6 +129,16 @@ function initial(){
   				}
 			}
 	}
+
+	/* Merge static leases and hostnames */
+	for(var i = 1; i < staticclist_row.length; i++){
+		var row = staticclist_row[i].split('&#62');
+		dhcp_staticlist_array += "&#60";
+		dhcp_staticlist_array += row[0] + "&#62";
+		dhcp_staticlist_array += row[1] + "&#62";
+		dhcp_staticlist_array += get_static_hostname(row[0]);
+	}
+
 	if (((sortCol = cookie.get('dhcp_sortcol')) != null) && ((sortMethod = cookie.get('dhcp_sortmet')) != null)) {
 		document.getElementById("col" + sortCol).style.borderBottom="2px solid #fc0";
 		merlinWS.sortMethod = parseInt(sortMethod);
@@ -161,6 +174,15 @@ function initial(){
 	if(lyra_hide_support){
 		$("#dhcpEnable").hide();
 	}
+}
+
+function get_static_hostname(mac) {
+	for (var i = 1; i < dhcp_hostnames_row.length; i++){
+		var entry = dhcp_hostnames_row[i].split('&#62');
+		if (mac == entry[0])
+			return entry[1];
+	}
+	return "";
 }
 
 function addRow(obj, head){
@@ -403,21 +425,27 @@ function applyRule(){
 		var rule_num = document.getElementById('dhcp_staticlist_table').rows.length;
 		var item_num = document.getElementById('dhcp_staticlist_table').rows[0].cells.length;
 		var tmp_value = "";
+		var hostnames = "";
 
 		if (document.getElementById('dhcp_staticlist_table').rows[0].cells[0].innerHTML != "<#IPConnection_VSList_Norule#>") {
 			for(i=0; i<rule_num; i++){
 				tmp_value += "<";
 				tmp_value += document.getElementById('dhcp_staticlist_table').rows[i].cells[0].title + ">";
-				tmp_value += document.getElementById('dhcp_staticlist_table').rows[i].cells[1].innerHTML + ">";
-				tmp_value += document.getElementById('dhcp_staticlist_table').rows[i].cells[2].innerHTML;
+				tmp_value += document.getElementById('dhcp_staticlist_table').rows[i].cells[1].innerHTML;
+				if (document.getElementById('dhcp_staticlist_table').rows[i].cells[2].innerHTML != "") {
+					hostnames += "<";
+					hostnames += document.getElementById('dhcp_staticlist_table').rows[i].cells[0].title + ">";
+					hostnames += document.getElementById('dhcp_staticlist_table').rows[i].cells[2].innerHTML;
+				}
 			}
 		}
-		if (tmp_value.length > 2998) {
+		if (tmp_value.length > 2998 || hostnames.length > 2998)  {
 			alert("Resulting list of DHCP reservations is too long - remove some, or use shorter names.");
 			return false;
 		}
 
 		document.form.dhcp_staticlist.value = tmp_value;
+		document.form.dhcp_hostnames.value = hostnames;
 
 		// Only restart the whole network if needed
 		if ((document.form.dhcp_wins_x.value != dhcp_wins_curr) ||
@@ -893,6 +921,7 @@ function parse_vpnc_dev_policy_list(_oriNvram) {
 <input type="hidden" name="lan_ipaddr" value="<% nvram_get("lan_ipaddr"); %>">
 <input type="hidden" name="lan_netmask" value="<% nvram_get("lan_netmask"); %>">
 <input type="hidden" name="dhcp_staticlist" value="">
+<input type="hidden" name="dhcp_hostnames" value="">
 <input type="hidden" name="vpnc_dev_policy_list" value="" disabled>
 <input type="hidden" name="vpnc_dev_policy_list_tmp" value="" disabled>
 
@@ -1023,13 +1052,6 @@ function parse_vpnc_dev_policy_list(_oriNvram) {
                                   <input type="radio" value="0" name="dhcpd_dns_router" class="content_input_fd" onClick="return change_common_radio(this, 'LANHostConfig', 'dhcpd_dns_router', '0')" <% nvram_match("dhcpd_dns_router", "0", "checked"); %>><#checkbox_No#>
                                 </td>
                           </tr>
-			  <tr>
-				<th><a class="hintstyle" href="javascript:void(0);" onClick="openHint(50,5);">Forward local domain queries to upstream DNS</a></th>
-				<td colspan="2" style="text-align:left;">
-					<input type="radio" value="1" name="lan_dns_fwd_local"  onclick="return change_common_radio(this, 'LANHostConfig', 'lan_dns_fwd_local', '1')" <% nvram_match("lan_dns_fwd_local", "1", "checked"); %> /><#checkbox_Yes#>
-					<input type="radio" value="0" name="lan_dns_fwd_local"  onclick="return change_common_radio(this, 'LANHostConfig', 'lan_dns_fwd_local', '0')" <% nvram_match("lan_dns_fwd_local", "0", "checked"); %> /><#checkbox_No#>
-				</td>
-			  </tr>
 			  <tr>
 				<th><a class="hintstyle" href="javascript:void(0);" onClick="openHint(5,8);"><#LANHostConfig_x_WINSServer_itemname#></a></th>
 				<td>

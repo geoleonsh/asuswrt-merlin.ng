@@ -60,9 +60,25 @@ all:
 clean:
 	rm -f rom/etc/motd
 
+rom/etc/ssl/certs/ca-certificates.crt:
+	ssl/mk-ca-bundle.pl -fu $@
+
+certs: dummy
+	ssl/mk-ca-bundle.pl -fu rom/etc/ssl/certs/ca-certificates.crt
+
+certs-install: rom/etc/ssl/certs/ca-certificates.crt
+	install -d $(INSTALLDIR)/rom/etc/ssl/certs
+	install -m 0644 rom/etc/ssl/certs/ca-certificates.crt $(INSTALLDIR)/rom/etc/ssl/certs/ca-certificates.crt
+	sed -r '/^\s*(#|$$)/d;/\-BEGIN/{h;d};H;/\-END/{x;/\-BEGIN/p};d' -i $(INSTALLDIR)/rom/etc/ssl/certs/ca-certificates.crt
+
 install:
 	mkdir -p $(INSTALLDIR)
 	( tar --exclude=.svn --exclude=*.bak -cpf - rom ) | ( cd $(INSTALLDIR) && tar -xpf - )
+
+	$(MAKE) certs-install
+ifeq ($(RTCONFIG_LETSENCRYPT),y)
+	install -m 0644 rom/etc/ssl/certs/DST_Root_CA_X3.pem $(INSTALLDIR)/rom/etc/ssl/certs/letsencrypt.pem
+endif
 
 ifeq ($(RTAC88U),y)
 	install -m 0644 smb.conf $(INSTALLDIR)/rom/smb.conf
@@ -139,6 +155,9 @@ endif
 
 ifeq ($(RTCONFIG_MERLINUPDATE),y)
 	cp -f webs_scripts/merlin_webs_update.sh $(INSTALLDIR)/usr/sbin/webs_update.sh
+ifeq ($(RTCONFIG_CFGSYNC),y)
+	cp -f webs_scripts/merlin_webs_note.sh $(INSTALLDIR)/usr/sbin/webs_note.sh
+endif
 ifeq ($(or $(RTCONFIG_BWDPI),$(RTCONFIG_BWDPI_DEP)),y)
 	cp -f webs_scripts/sig2nd_upgrade.sh $(INSTALLDIR)/usr/sbin/sig_upgrade.sh
 	cp -f webs_scripts/sig2nd_update.sh $(INSTALLDIR)/usr/sbin/sig_update.sh
@@ -211,7 +230,8 @@ else
 endif
 
 ifeq ($(RTCONFIG_HTTPS),y)
-	sed 's/#.*//g;s/[ \t]\+/ /g;s/^[ \t]*//;s/[ \t]*$$//;/^$$/d' < rom/etc/openssl.cnf > $(INSTALLDIR)/rom/etc/openssl.cnf
+	sed 's/#.*//g;s/[ \t]\+/ /g;s/^[ \t]*//;s/[ \t]*$$//;/^$$/d' < rom/etc/ssl/openssl.cnf > $(INSTALLDIR)/rom/etc/ssl/openssl.cnf
+	ln -s certs/ca-certificates.crt $(INSTALLDIR)/rom/etc/ssl/cert.pem
 else
 	rm -f $(INSTALLDIR)/rom/etc/openssl.cnf
 endif
@@ -279,10 +299,6 @@ ifeq ($(RTCONFIG_OPENVPN),y)
 endif
 #	install -m 0755 webs_scripts/GoogleDNS_Update.sh $(INSTALLDIR)/usr/sbin
 
-ifeq ($(RTCONFIG_LETSENCRYPT),y)
-	install -m 0644 rom/etc/ssl/certs/DST_Root_CA_X3.pem $(INSTALLDIR)/rom/etc/ssl/certs/letsencrypt.pem
-endif
-
 ifeq ($(HND_ROUTER),y)
 	mkdir -p $(INSTALLDIR)/rom/usr/share/zoneinfo
 	mkdir -p $(INSTALLDIR)/rom/scripts
@@ -292,3 +308,5 @@ endif
 ifeq ($(RTCONFIG_DNSPRIVACY),y)
 	install -m 0644 dot-servers.dat $(INSTALLDIR)/rom/dot-servers.dat
 endif
+
+.PHONY: dummy

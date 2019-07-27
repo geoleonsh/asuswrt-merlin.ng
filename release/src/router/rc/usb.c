@@ -352,6 +352,7 @@ void add_usb_modem_modules(void)
 	if (usb_modem_modules_loaded)
 		return;
 	usb_modem_modules_loaded = 1;
+
 #ifdef RTAC68U
 	if (!hw_usb_cap())
 		return;
@@ -1699,7 +1700,7 @@ _dprintf("%s: stop_cloudsync.\n", __func__);
 		stop_usb_swap(mnt->mnt_dir);
 #endif	
 
-	run_custom_script_blocking("unmount", mnt->mnt_dir, NULL);
+	run_custom_script("unmount", 120, mnt->mnt_dir, NULL);
 
 	sync();
 	sleep(1);       // Give some time for buffers to be physically written to disk
@@ -1884,7 +1885,7 @@ int mount_partition(char *dev_name, int host_num, char *dsc_name, char *pt_name,
 
 	find_label_or_uuid(dev_name, the_label, uuid);
 
-	run_custom_script_blocking("pre-mount", dev_name, type);
+	run_custom_script("pre-mount", 120, dev_name, type);
 
 	if (f_exists("/etc/fstab")) {
 		if (strcmp(type, "swap") == 0) {
@@ -2069,7 +2070,7 @@ _dprintf("usb_path: 4. don't set %s.\n", tmp);
 		if (nvram_get_int("usb_automount"))
 			run_nvscript("script_usbmount", mountpoint, 3);
 
-		run_custom_script_blocking("post-mount", mountpoint, NULL);
+		run_custom_script("post-mount", 120, mountpoint, NULL);
 
 #if defined(RTCONFIG_APP_PREINSTALLED) && defined(RTCONFIG_CLOUDSYNC)
 		char word[PATH_MAX], *next_word;
@@ -3117,7 +3118,7 @@ start_samba(void)
 #else
 	char *cpu_list = "1";
 #endif
-#if (defined(RTCONFIG_BCMARM) || defined(RTCONFIG_SOC_IPQ8064))
+#if defined(RTCONFIG_BCMARM) || defined(RTCONFIG_SOC_IPQ8064)
 	int cpu_num = sysconf(_SC_NPROCESSORS_CONF);
 	int taskset_ret = -1;
 #endif
@@ -3289,6 +3290,8 @@ start_samba(void)
 		xstart(smbd_cmd, "-D", "-s", "/etc/smb.conf");
 #endif
 
+	start_wsdd();
+
 	logmessage("Samba Server", "daemon is started");
 
 	return;
@@ -3301,6 +3304,7 @@ void stop_samba(void)
 		return;
 	}
 
+	stop_wsdd();
 	kill_samba(SIGTERM);
 	/* clean up */
 	unlink("/var/log/smb");
@@ -4293,6 +4297,17 @@ void stop_cloudsync(int type)
 	else if(type == 0){
 		if(pids("inotify") && !pids("webdav_client") && !pids("dropbox_client") && !pids("ftpclient") && !pids("sambaclient")  && !pids("usbclient")&& !pids("google_client"))
 			killall_tk("inotify");
+
+		if(pids("asuswebstorage"))
+			killall_tk("asuswebstorage");
+		logmessage("Cloudsync client", "daemon is stoped");
+	}
+	else{
+	if(pids("inotify"))
+			killall_tk("inotify");
+
+	if(pids("webdav_client"))
+			killall_tk("webdav_client");
 
 		if(pids("asuswebstorage"))
 			killall_tk("asuswebstorage");
@@ -5561,4 +5576,43 @@ void stop_nfsd(void)
 }
 
 #endif
+
+
+void start_wsdd()
+{
+	unsigned char ea[ETHER_ADDR_LEN];
+	char serial[18];
+	pid_t pid;
+	char bootparms[64];
+	char *wsdd_argv[] = { "/usr/sbin/wsdd2",
+				"-d",
+				"-w",
+				"-i",
+				nvram_safe_get("lan_ifname"),
+				"-b",
+				NULL,	// boot parameters
+				NULL };
+	stop_wsdd();
+
+	if (!ether_atoe(get_lan_hwaddr(), ea))
+		f_read("/dev/urandom", ea, sizeof(ea));
+
+	snprintf(serial, sizeof(serial), "%02x%02x%02x%02x%02x%02x",
+		ea[0], ea[1], ea[2], ea[3], ea[4], ea[5]);
+
+	snprintf(bootparms, sizeof(bootparms), "sku:%s,serial:%s", get_productid(), serial);
+	wsdd_argv[6] = bootparms;
+
+#if 0
+	if(!f_exists("/etc/machine-id"))
+		system("echo $(nvram get lan_hwaddr) | md5sum | cut -b -32 > /etc/machine-id");
+#endif
+
+	_eval(wsdd_argv, NULL, 0, &pid);
+}
+
+void stop_wsdd() {
+	if (pids("wsdd2"))
+		killall_tk("wsdd2");
+}
 

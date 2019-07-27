@@ -24,7 +24,7 @@ CERTNAME="cert.pem"
 
 OPENSSLCNF="/etc/openssl.config.$PID"
 
-cp -L /etc/openssl.cnf $OPENSSLCNF
+cp -L /etc/ssl/openssl.cnf $OPENSSLCNF
 
 LANCN=$(nvram get https_crt_cn)
 LANIP=$(nvram get lan_ipaddr)
@@ -127,7 +127,7 @@ fi
 # create the key
 $OPENSSL genpkey -out $KEYNAME.$PID -algorithm rsa -pkeyopt rsa_keygen_bits:2048
 # create certificate request and sign it
-$OPENSSL req -new -x509 -key $KEYNAME.$PID -sha256 -out $CERTNAME.$PID -days 3653 -config $OPENSSLCNF
+$OPENSSL req -new -x509 -key $KEYNAME.$PID -sha256 -out $CERTNAME.$PID -days 3653 -config $OPENSSLCNF -set_serial $1
 
 # server.pem for WebDav SSL
 cat $KEYNAME.$PID $CERTNAME.$PID > server.pem

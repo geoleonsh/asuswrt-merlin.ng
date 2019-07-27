@@ -1239,11 +1239,13 @@ obj-$(RTCONFIG_TRANSMISSION) += Transmission curl-7.21.7 libevent-2.0.21
 obj-$(RTCONFIG_NANO) += ncurses-6.0
 obj-$(RTCONFIG_NANO) += nano
 obj-$(RTCONFIG_OPENVPN) += ministun
-obj-$(RTCONFIG_DNSSEC) += nettle
+obj-$(RTCONFIG_DNSSEC) += $(if $(RTCONFIG_DNSSEC_OPENSSL),openssl-1.1.x,) $(if $(RTCONFIG_DNSSEC_NETTLE),nettle,)
 obj-$(RTCONFIG_SAMBA36X) += libiconv-1.14
 obj-$(RTCONFIG_TELENET) += lanauth
 obj-y += inadyn
 obj-y += libconfuse
+obj-y += wsdd2
+
 ifeq ($(RTCONFIG_OPENSSL11),y)
 obj-$(RTCONFIG_OPENSSL11) += openssl-1.1.x
 OPENSSLDIR=openssl-1.1.x
@@ -2459,7 +2461,7 @@ endif
 
 openssl-1.0.0q/Makefile:
 	cd openssl-1.0.0q && \
-	./Configure $(HOSTCONFIG) --prefix=/usr --openssldir=/etc --cross-compile-prefix=' ' \
+	./Configure $(HOSTCONFIG) --prefix=/usr --openssldir=/etc/ssl --cross-compile-prefix=' ' \
 	-ffunction-sections -fdata-sections -Wl,--gc-sections \
 	shared $(OPENSSL_CIPHERS)
 #	no-sha0 no-smime no-camellia no-krb5 no-rmd160 no-ripemd \
@@ -2495,7 +2497,7 @@ openssl-1.0.0q-stage:
 
 openssl/Makefile:
 	cd openssl && \
-	./Configure $(HOSTCONFIG) -O2 -DOPENSSL_NO_BUF_FREELISTS --prefix=/usr --openssldir=/etc --cross-compile-prefix=' ' \
+	./Configure $(HOSTCONFIG) -O2 -DOPENSSL_NO_BUF_FREELISTS --prefix=/usr --openssldir=/etc/ssl --cross-compile-prefix=' ' \
 	-ffunction-sections -fdata-sections -Wl,--gc-sections \
 	shared $(OPENSSL_CIPHERS) no-ssl2 no-err
 #	no-sha0 no-smime no-camellia no-krb5 no-rmd160 no-ripemd \
@@ -2749,19 +2751,21 @@ ifeq ($(RTCONFIG_DHDAP),y)
 endif
 endif
 
-
-dnsmasq:  $(if $(RTCONFIG_DNSSEC),nettle,)
+dnsmasq:  $(if $(RTCONFIG_DNSSEC_OPENSSL),openssl-1.1.x,) $(if $(RTCONFIG_DNSSEC_NETTLE),nettle,)
 	@$(SEP)
-	@$(MAKE) -C dnsmasq \
+	$(MAKE) -C dnsmasq \
 	COPTS="-DHAVE_BROKEN_RTC -DHAVE_LEASEFILE_EXPIRE -DNO_ID -DNO_AUTH -DNO_INOTIFY -DNO_DUMPFILE -DNO_GMP \
 		$(if $(RTCONFIG_IPV6),-DUSE_IPV6,-DNO_IPV6) \
 		$(if $(RTCONFIG_USB_EXTRAS)||$(RTCONFIG_TR069),,-DNO_SCRIPT) \
 		$(if $(RTCONFIG_USB_EXTRAS),,-DNO_TFTP) \
-		$(if $(RTCONFIG_DNSSEC),-I$(TOP)/nettle/include -I$(TOP)/gmp -DHAVE_DNSSEC -DHAVE_DNSSEC_STATIC,)" \
+		$(if $(RTCONFIG_DNSSEC_OPENSSL),-I$(TOP)/openssl-1.1.x/include -DHAVE_DNSSEC,) \
+		$(if $(RTCONFIG_DNSSEC_NETTLE),-I$(TOP)/nettle/include -I$(TOP)/gmp -DHAVE_DNSSEC -DHAVE_DNSSEC_STATIC -DNO_GOST,)" \
 	CFLAGS="-Os -ffunction-sections -fdata-sections $(EXTRACFLAGS)" \
 	LDFLAGS="-ffunction-sections -fdata-sections -Wl,--gc-sections $(EXTRALDFLAGS) \
-		$(if $(RTCONFIG_DNSSEC),-L$(TOP)/nettle/lib -L$(TOP)/gmp/.libs,)" \
-	$(if $(RTCONFIG_DNSSEC),PKG_CONFIG_PATH="$(TOP)/nettle/lib/pkgconfig",)
+		$(if $(RTCONFIG_DNSSEC_OPENSSL),-pthread -L$(TOP)/openssl-1.1.x,) \
+		$(if $(RTCONFIG_DNSSEC_NETTLE),-L$(TOP)/nettle/lib -L$(TOP)/gmp/.libs,)" \
+	$(if $(RTCONFIG_DNSSEC_OPENSSL),PKG_CONFIG_PATH="$(TOP)/openssl-1.1.x" CRYPTO=openssl,) \
+	$(if $(RTCONFIG_DNSSEC_NETTLE),PKG_CONFIG_PATH="$(TOP)/nettle/lib/pkgconfig",)
 
 dnsmasq-install:
 	install -D dnsmasq/src/dnsmasq $(INSTALLDIR)/dnsmasq/usr/sbin/dnsmasq
@@ -4175,7 +4179,9 @@ sqlite-clean:
 sqlite-install: sqlite
 	@$(SEP)
 	install -D sqlite/.libs/libsqlite3.so.0 $(INSTALLDIR)/sqlite/usr/lib/libsqlite3.so.0
+	install -D sqlite/.libs/sqlite3 $(INSTALLDIR)/sqlite/usr/sbin/sqlite3
 	$(STRIP) $(INSTALLDIR)/sqlite/usr/lib/libsqlite3.so.0
+	$(STRIP) $(INSTALLDIR)/sqlite/usr/sbin/sqlite3
 
 # sqlite encrpted version
 sqlCipher/stamp-h1:
@@ -4455,7 +4461,7 @@ minidlna-configure:
 		$(if $(RTAC68U,y),-L$(TOP)/nvram${BCMEX} -lnvram -L$(TOP)/shared -lshared) \
 	ac_cv_header_linux_netlink_h=no \
 	$(CONFIGURE)  --with-db-path=/tmp/minidlna --with-log-path=/tmp/minidlna \
-		--with-os-name=Asuswrt --with-os-version=382.xx --with-os-url="https://asuswrt.lostrealm.ca/" \
+		--with-os-name=Asuswrt --with-os-version=384.xx --with-os-url="https://www.asuswrt-merlin.net/" \
 		--enable-tivo
 
 minidlna-clean:
@@ -5299,47 +5305,47 @@ usbclient-clean:
 	rm -rf usbclient/stamp-h1
 
 ##strongswan/IPSEC
-strongswan/stamp-h1: $(OPENSSLDIR)
-	cd strongswan && autoreconf -i -f && \
-	$(CONFIGURE) \
-	--prefix=/usr/ --sysconfdir=/etc/ --localstatedir=/var/ \
-	--bindir=/usr/sbin --libdir=/usr/lib \
-	--libexecdir=/usr/lib --with-ipsecdir=/usr/lib/ipsec --with-user=admin \
-	--disable-gmp --enable-openssl --enable-agent --enable-eap-peap \
-	--enable-eap-md5 --enable-eap-mschapv2 --enable-eap-identity \
-	--with-strongswan-conf=/etc/strongswan.conf --enable-md4 --enable-acert \
-	--enable-cmd --enable-eap-tls --enable-libipsec \
-	CFLAGS="-O3 -I$(TOP)/$(OPENSSLDIR)/include $(if $(RTCONFIG_HND_ROUTER),-DHND_ROUTER,)" \
-	LDFLAGS="-L$(TOP)/$(OPENSSLDIR) -L$(STAGEDIR)/usr/lib" \
-	LIBS="-lssl -lcrypto -lpthread -ldl -lm"
-	touch $@
+strongswan/configure:
+	cd strongswan && autoreconf -i
 
-strongswan: strongswan/stamp-h1
-	$(MAKE) $(PARALLEL_BUILD) -C strongswan
+strongswan/Makefile: strongswan/configure
+	cd strongswan && \
+	$(CONFIGURE) \
+	--prefix=/usr/ --bindir=/usr/sbin --sysconfdir=/etc/ --localstatedir=/var/ --libexecdir=/usr/lib \
+	--enable-silent-rules \
+	--disable-gmp --enable-openssl \
+	--enable-acert --enable-agent \
+	--enable-md4 \
+	--enable-eap-identity --enable-eap-md5 --enable-eap-mschapv2 --enable-eap-tls --enable-eap-peap \
+	--enable-cmd --enable-libipsec \
+	--enable-shared --disable-static \
+	--with-ipsecdir=/usr/lib/ipsec \
+	--with-strongswan-conf=/etc/strongswan.conf \
+	--with-user=admin \
+	CFLAGS="-O2 -Wall -Wno-format -Wno-format-security -Wno-pointer-sign \
+		-I$(TOP)/$(OPENSSLDIR)/include -I$(STAGEDIR)/usr/include $(EXTRACFLAGS) \
+		$(if $(RTCONFIG_HND_ROUTER),-DHND_ROUTER,)" \
+	LDFLAGS="-L$(TOP)/$(OPENSSLDIR) -L$(STAGEDIR)/usr/lib $(EXTRALDFLAGS)" \
+	LIBS="-lssl -lcrypto -lpthread -ldl -lm"
+
+strongswan: $(OPENSSLDIR) strongswan/Makefile
+	@$(SEP)
+	$(MAKE) -j 8 -C strongswan
 
 strongswan-install: strongswan
 	@$(SEP)
-	@$(MAKE) -C strongswan install DESTDIR=$(INSTALLDIR)/strongswan/ ; chmod 755 $(INSTALLDIR)/strongswan/usr/lib
-	@rm -rf $(INSTALLDIR)/strongswan/usr/etc
-	@rm -f $(INSTALLDIR)/strongswan/usr/lib/ipsec/*.la
-	@rm -f $(INSTALLDIR)/strongswan/usr/lib/ipsec/plugins/*.la
-	@rm -f $(INSTALLDIR)/strongswan/usr/lib/ipsec/*.a
-	@rm -f $(INSTALLDIR)/strongswan/usr/lib/ipsec/plugins/*.a
-	$(STRIP) $(INSTALLDIR)/strongswan/usr/lib/ipsec/*.so
-	$(STRIP) $(INSTALLDIR)/strongswan/usr/lib/ipsec/starter
-	$(STRIP) $(INSTALLDIR)/strongswan/usr/lib/ipsec/stroke
-	$(STRIP) $(INSTALLDIR)/strongswan/usr/lib/ipsec/scepclient
-	$(STRIP) $(INSTALLDIR)/strongswan/usr/lib/ipsec/charon
-	$(STRIP) $(INSTALLDIR)/strongswan/usr/lib/ipsec/plugins/*.so
-
+	$(MAKE) -C strongswan install-strip DESTDIR=$(INSTALLDIR)/strongswan/ ; chmod 755 $(INSTALLDIR)/strongswan/usr/lib
+	rm -rf $(INSTALLDIR)/strongswan/usr/etc
+	rm -rf $(INSTALLDIR)/strongswan/usr/lib/ipsec/*.a
+	rm -rf $(INSTALLDIR)/strongswan/usr/lib/ipsec/*.la
+	rm -rf $(INSTALLDIR)/strongswan/usr/lib/ipsec/plugins/*.a
+	rm -rf $(INSTALLDIR)/strongswan/usr/lib/ipsec/plugins/*.la
+	rm -rf $(INSTALLDIR)/strongswan/usr/share/man
 	mv $(INSTALLDIR)/strongswan/etc $(INSTALLDIR)/strongswan/usr/
 
 strongswan-clean:
-	-@$(MAKE) -C strongswan clean
-	@rm -f strongswan/stamp-h1
-	@rm -rf $(INSTALLDIR)/strongswan/
-	@rm -rf $(TARGETDIR)/usr/sbin/strongswan/*
-	@rm -rf $(TARGETDIR)/usr/lib/strongswan/*
+	[ ! -f strongswan/Makefile ] || $(MAKE) -C strongswan distclean
+	@rm -f strongswan/Makefile
 
 sw-hw-auth:
 	cd sw-hw-auth && \
@@ -5436,7 +5442,7 @@ curl-7.21.7/Makefile: curl/configure
 		--disable-proxy --disable-manual --disable-libcurl-option \
 		--disable-threaded-resolver \
 		LDFLAGS='$(LDFLAGS) -L$(TOP)/openssl' LIBS='-lcrypto -lssl -ldl' \
-		--with-ca-bundle=/etc/ssl/certs/ca-certificates.crt
+		--with-ca-fallback
 
 curl-7.21.7-install: curl-7.21.7
 	@$(SEP)
@@ -5505,7 +5511,7 @@ net-snmp-5.7.2-install:
 
 net-snmp-5.7.2-clean:
 	@[ ! -f net-snmp-5.7.2/Makefile ] || $(MAKE) -C net-snmp-5.7.2 clean
-	@rm -f net-snmp-5.7.2/stamp-h1
+	@rm -f net-snmp-5.7.2/Makefile net-snmp-5.7.2/stamp-h1
 
 asuswebstorage/stamp-h1:
 	touch $@
@@ -7182,7 +7188,7 @@ portmap-install:
 
 openssl-1.1.x/Makefile:
 	cd openssl-1.1.x && \
-	./Configure $(HOSTCONFIG) --prefix=/usr --openssldir=/etc --cross-compile-prefix=' ' \
+	./Configure $(HOSTCONFIG) --prefix=/usr --openssldir=/etc/ssl --cross-compile-prefix=' ' \
 	-O2 -ffunction-sections -fdata-sections -Wl,--gc-sections \
 	shared $(OPENSSL_CIPHERS) no-err no-async --api=1.0.0 \
 	no-aria no-sm2 no-sm3 no-sm4 \
@@ -7215,6 +7221,18 @@ openssl-1.1.x-stage:
 libvpn: shared nvram$(BCMEX)$(EX7)
 	@$(SEP)
 	$(MAKE) -C libvpn
+
+wsdd2:
+	@$(SEP)
+	$(MAKE) CFLAGS+="-DASUSWRT -Os" -C $@
+
+wsdd2-install:
+	install -D wsdd2/wsdd2 $(INSTALLDIR)/wsdd2/usr/sbin/wsdd2
+	$(STRIP) $(INSTALLDIR)/wsdd2/usr/sbin/wsdd2
+
+wsdd2-clean:
+	$(MAKE) -C wsdd2 clean
+
 # End merlin components
 
 readline-6.2/Makefile: readline-6.2/configure

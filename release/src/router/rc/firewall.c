@@ -1204,7 +1204,9 @@ void redirect_nat_setting(void)
 	fprintf(fp, "*nat\n"
 		":PREROUTING ACCEPT [0:0]\n"
 		":POSTROUTING ACCEPT [0:0]\n"
-		":OUTPUT ACCEPT [0:0]\n");
+		":OUTPUT ACCEPT [0:0]\n"
+		":PUPNP - [0:0]\n"
+		":VUPNP - [0:0]\n");
 #ifdef RTCONFIG_WIFI_SON
 	if(sw_mode() == SW_MODE_AP && nvram_match("cfg_master", "1")){
 		fprintf(fp, "-A PREROUTING -p udp --dport 53 -i %s -j DNAT --to-destination %s:53\n",BR_GUEST, APMODE_BRGUEST_IP);
@@ -1238,7 +1240,9 @@ void repeater_nat_setting(){
 	fprintf(fp, "*nat\n"
 		":PREROUTING ACCEPT [0:0]\n"
 		":POSTROUTING ACCEPT [0:0]\n"
-		":OUTPUT ACCEPT [0:0]\n");
+		":OUTPUT ACCEPT [0:0]\n"
+		":PUPNP - [0:0]\n"
+		":VUPNP - [0:0]\n");
 
 	fprintf(fp, "-A PREROUTING -d 10.0.0.1 -p tcp --dport 80 -j DNAT --to-destination %s:%d\n", lan_ip, lan_port);
 	fprintf(fp, "-A PREROUTING -d %s -p tcp --dport 80 -j DNAT --to-destination %s:%d\n", nvram_default_get("lan_ipaddr"), lan_ip, lan_port);
@@ -1690,6 +1694,14 @@ void nat_setting(char *wan_if, char *wan_ip, char *wanx_if, char *wanx_ip, char 
 	dnsfilter_settings(fp, lan_ip);
 #endif
 
+#ifdef RTCONFIG_NTPD
+	if (nvram_get_int("ntpd_enable") && nvram_get_int("ntpd_server_redir")) {
+		fprintf(fp, "-A PREROUTING -i %s -p udp -m udp --dport 123 -j REDIRECT --to-port 123\n"
+			    "-A PREROUTING -i %s -p tcp -m tcp --dport 123 -j REDIRECT --to-port 123\n",
+			    lan_if, lan_if);
+	}
+#endif
+
 #ifdef RTCONFIG_PARENTALCTRL
 	pc_s *pc_list = NULL;
 	int pc_count;
@@ -1874,16 +1886,6 @@ void nat_setting(char *wan_if, char *wan_ip, char *wanx_if, char *wanx_ip, char 
 		}
 	}
 #endif
-#ifdef RTCONFIG_WIFI_SON
-	char g_lan_class[32];
-	char g_lan_ip[20];
-	unsigned int dip;
-	struct in_addr gst;
-
-	dip = ntohl(inet_addr(lan_ip)) + 0x100;
-	gst.s_addr = htonl(dip);
-	strcpy(g_lan_ip, inet_ntoa(gst));
-#endif
 
 	fprintf(fp, "COMMIT\n");
 	fclose(fp);
@@ -1915,6 +1917,16 @@ void nat_setting2(char *lan_if, char *lan_ip, char *logaccept, char *logdrop)	//
 	int wan_max_unit = WAN_UNIT_MAX;
 #ifdef RTCONFIG_MULTIWAN_CFG
 	int wanx_rules = 0;
+#endif
+#ifdef RTCONFIG_WIFI_SON
+	char g_lan_class[32];
+	char g_lan_ip[20];
+	unsigned int dip;
+	struct in_addr gst;
+
+	dip = ntohl(inet_addr(lan_ip)) + 0x100;
+	gst.s_addr = htonl(dip);
+	strcpy(g_lan_ip, inet_ntoa(gst));
 #endif
 #ifdef RTCONFIG_TOR
 	char addr_new[32];
@@ -2065,6 +2077,14 @@ void nat_setting2(char *lan_if, char *lan_ip, char *logaccept, char *logdrop)	//
 
 #ifdef RTCONFIG_DNSFILTER
 	dnsfilter_settings(fp, lan_ip);
+#endif
+
+#ifdef RTCONFIG_NTPD
+	if (nvram_get_int("ntpd_enable") && nvram_get_int("ntpd_server_redir")) {
+		fprintf(fp, "-A PREROUTING -i %s -p udp -m udp --dport 123 -j REDIRECT --to-port 123\n"
+		            "-A PREROUTING -i %s -p tcp -m tcp --dport 123 -j REDIRECT --to-port 123\n",
+		            lan_if, lan_if);
+	}
 #endif
 
 #ifdef RTCONFIG_PARENTALCTRL
@@ -4509,7 +4529,8 @@ TRACE_PT("writing Parental Control\n");
 #endif
 
 #ifdef RTCONFIG_FTP
-		if (nvram_get_int("enable_ftp")) {
+		if ((nvram_get_int("enable_ftp")) && (nvram_get_int("ftp_wanac")))
+		{
 			fprintf(fp, "-A INPUT -p tcp -m tcp --dport 21 -j %s\n", logaccept);
 			int local_ftpport = nvram_get_int("vts_ftpport");
 			if (nvram_match("vts_enable_x", "1") && local_ftpport != 0 && local_ftpport != 21 && ruleHasFTPport())
@@ -6282,7 +6303,7 @@ int start_firewall(int wanunit, int lanunit)
 leave:
 	file_unlock(lock);
 
-	run_custom_script("firewall-start", wan_if);
+	run_custom_script("firewall-start", 0, wan_if, NULL);
 
 	return 0;
 }

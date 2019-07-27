@@ -738,7 +738,14 @@ ej_nvram_get(int eid, webs_t wp, int argc, char_t **argv)
 	if (strcmp(name, "modem_spn") == 0 && !nvram_invmatch(name, ""))
 		name = "modem_isp";
 
-	c = nvram_safe_get(name);
+#ifdef HND_ROUTER
+	if (!strcmp(name, "dhcp_hostnames")) {
+		c = jffs_nvram_get(name);
+		if (!c)
+			c = "";
+	} else
+#endif
+		c = nvram_safe_get(name);
 
 	//if((ret = dec_nvram(name, c, dec_passwd)) == 1){
 		//_dprintf("ej_nvram_get: name = %s, enc_value = %s\n", name, enc_passwd);
@@ -3127,6 +3134,13 @@ static int validate_apply(webs_t wp, json_object *root) {
 				nvram_modified = 1;
 				_dprintf("set %s=%s\n", name, value);
 			}
+#ifdef HND_ROUTER
+			else if(!strcmp(name, "dhcp_hostnames")) {
+				jffs_nvram_set(name, value);
+				_dprintf("set jffs %s = %s\n", name, value);
+				 nvram_modified = 1;
+			}
+#endif
 
 #ifdef RTCONFIG_DISK_MONITOR
 			else if(!strncmp(name, "diskmon_", 8)) {
@@ -15710,8 +15724,8 @@ struct mime_handler mime_handlers[] = {
 	{ "update_customList.asp", "text/html", no_cache_IE7, do_html_post_and_get, do_ej, do_auth },
 	{ "manifest.appcache", "text/html", no_cache_IE7, do_html_post_and_get, do_ej, NULL },
 	{ "offline.htm", "text/html", no_cache_IE7, do_html_post_and_get, do_ej, NULL },
-	{ "wcdma_list.js", "text/html", no_cache_IE7, do_html_post_and_get, do_ej, do_auth },
-	{ "help_content.js", "text/html", no_cache_IE7, do_html_post_and_get, do_ej, do_auth },
+	{ "wcdma_list.js", "text/javascript", no_cache_IE7, do_html_post_and_get, do_ej, do_auth },
+	{ "help_content.js", "text/javascript", no_cache_IE7, do_html_post_and_get, do_ej, do_auth },
 	{ "httpd_check.htm", "text/html", no_cache_IE7, do_html_post_and_get, do_ej, NULL },
 	{ "manifest.asp", "text/html", no_cache_IE7, do_html_post_and_get, do_ej, NULL },
 	{ "update_cloudstatus.asp", "text/html", no_cache_IE7, do_html_post_and_get, do_ej, NULL },

@@ -1218,6 +1218,8 @@ extern void start_webdav(void);
 extern void create_custom_passwd(void);
 extern void stop_samba(void);
 extern void start_samba(void);
+extern void stop_wsdd(void);
+extern void start_wsdd(void);
 #endif
 #ifdef RTCONFIG_NFS
 extern void start_nfsd(void);
@@ -1305,7 +1307,6 @@ extern void stop_ovpn_eas(void);
 extern void run_ovpn_fw_script();
 extern void create_ovpn_passwd();
 extern void stop_ovpn_all();
-extern void update_ovpn_profie_remote();
 #endif
 
 // wanduck.c
@@ -1802,8 +1803,8 @@ extern int dump_powertable(void);
 
 //speedtest.c
 extern int speedtest_main(int argc, char **argv);
-extern int speedtest();
 extern void wan_bandwidth_detect(void);
+extern int speedtest();
 
 #if defined(RTCONFIG_BWDPI)
 extern int bwdpi_main(int argc, char **argv);
