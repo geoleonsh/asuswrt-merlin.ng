@@ -1744,6 +1744,20 @@ void start_dnsmasq(void)
 	if (nvram_match("dns_norebind", "1"))
 		fprintf(fp, "stop-dns-rebind\n");
 
+	/* Instruct clients like Firefox to not auto-enable DoH */
+	n = nvram_get_int("dns_priv_override");
+	if ((n == 1) ||
+	    (n == 0 && (
+#ifdef RTCONFIG_DNSPRIVACY
+	       nvram_get_int("dnspriv_enable") ||
+#endif
+	       (nvram_get_int("dnsfilter_enable_x") && nvram_get_int("dnsfilter_mode")) )	// DNSFilter enabled in Global mode
+	    )
+	) {
+
+		fprintf(fp, "address=/use-application-dns.net/\n");
+	}
+
 	/* Protect against VU#598349 */
 	fprintf(fp,"dhcp-name-match=set:wpad-ignore,wpad\n"
 		   "dhcp-ignore-names=tag:wpad-ignore\n");
@@ -3469,6 +3483,7 @@ start_ddns(void)
 		service = "update@asus.com";
 		user = get_lan_hwaddr();
 		passwd = nvram_safe_get("secret_code");
+		asus_ddns = 1;
 	}
 	else if (strcmp(server, "DOMAINS.GOOGLE.COM") == 0)
 		service = "default@domains.google.com";
@@ -3545,6 +3560,10 @@ start_ddns(void)
 				fprintf(fp, "wildcard = true\n");
 
 			fprintf(fp, "}\n");
+#if 1
+			if (asus_ddns == 1)
+				fprintf(fp, "secure-ssl = false\n");
+#endif
 
 			append_custom_config("inadyn.conf", fp);
 
@@ -3567,6 +3586,9 @@ start_ddns(void)
 			                 "-e", "/sbin/ddns_updated",
 					"--exec-nochg", "/sbin/ddns_updated",
 			                 "-l", loglevel,
+#ifdef RTCONFIG_LETSENCRYPT
+			                 (asus_ddns == 1 ? "-1" : NULL),
+#endif
 			                 NULL };
 
 			_eval(argv, NULL, 0, &pid);
@@ -3709,6 +3731,9 @@ asusddns_reg_domain(int reg)
 		fprintf(fp, "username = %s\n", get_lan_hwaddr());
 		fprintf(fp, "password = %s\n", nvram_safe_get("secret_code"));
 		fprintf(fp, "}\n");
+#if 1
+		fprintf(fp, "secure-ssl = false\n");
+#endif
 		fclose(fp);
 
 		if((time_fp=fopen("/tmp/ddns.cache","w"))) {
@@ -3785,6 +3810,9 @@ _dprintf("%s: do inadyn to unregister! unit = %d wan_ifname = %s nserver = %s ho
 		fprintf(fp, "username = %s\n", get_lan_hwaddr());
 		fprintf(fp, "password = %s\n", nvram_safe_get("secret_code"));
 		fprintf(fp, "}\n");
+#if 1
+		fprintf(fp, "secure-ssl = false\n");
+#endif
 		fclose(fp);
 
 /*
@@ -4765,6 +4793,25 @@ void start_upnp(void)
 		return;
 
 	unit = wan_primary_ifunit();
+#ifdef RTCONFIG_DUALWAN
+	if (get_dualwan_by_unit(unit) == WANS_DUALWAN_IF_NONE || !is_wan_connect(unit)) {
+		int i;
+		for (i = WAN_UNIT_FIRST; i < WAN_UNIT_MAX; i++) {
+			if (get_dualwan_by_unit(i) == WANS_DUALWAN_IF_NONE || !is_wan_connect(i))
+				continue;
+			snprintf(prefix, sizeof(prefix), "wan%d_", unit);
+			if (nvram_match(strcat_r(prefix, "proto", tmp), "static")) {
+				snprintf(tmp, sizeof(tmp), i ? "link_wan%d" : "link_wan", i);
+				if (!nvram_get_int(tmp))
+					continue;
+			}
+			if (nvram_get_int(strcat_r(prefix, "upnp_enable", tmp))) {
+				unit = i;
+				break;
+			}
+		}
+	}
+#endif
 	snprintf(prefix, sizeof(prefix), "wan%d_", unit);
 
 	upnp_enable = nvram_get_int("upnp_enable");
@@ -13399,6 +13446,7 @@ _dprintf("test 2. turn off the USB power during %d seconds.\n", reset_seconds[re
 		fprintf(stderr,
 			"WARNING: rc notified of unrecognized event `%s'.\n",
 					script);
+		logmessage("rc", "received unrecognized event: %s", script);
 	}
 
 skip:

@@ -1239,16 +1239,17 @@ obj-$(RTCONFIG_TRANSMISSION) += Transmission curl-7.21.7 libevent-2.0.21
 obj-$(RTCONFIG_NANO) += ncurses-6.0
 obj-$(RTCONFIG_NANO) += nano
 obj-$(RTCONFIG_OPENVPN) += ministun
-obj-$(RTCONFIG_DNSSEC) += $(if $(RTCONFIG_DNSSEC_OPENSSL),openssl-1.1.x,) $(if $(RTCONFIG_DNSSEC_NETTLE),nettle,)
+obj-$(RTCONFIG_DNSSEC) += $(if $(RTCONFIG_DNSSEC_OPENSSL),openssl-1.1,) $(if $(RTCONFIG_DNSSEC_NETTLE),nettle,)
 obj-$(RTCONFIG_SAMBA36X) += libiconv-1.14
 obj-$(RTCONFIG_TELENET) += lanauth
 obj-y += inadyn
 obj-y += libconfuse
 obj-y += wsdd2
+obj-$(RTCONFIG_BWDPI) += faketc
 
 ifeq ($(RTCONFIG_OPENSSL11),y)
-obj-$(RTCONFIG_OPENSSL11) += openssl-1.1.x
-OPENSSLDIR=openssl-1.1.x
+obj-$(RTCONFIG_OPENSSL11) += openssl-1.1
+OPENSSLDIR=openssl-1.1
 else
 OPENSSLDIR=openssl
 endif
@@ -2751,20 +2752,20 @@ ifeq ($(RTCONFIG_DHDAP),y)
 endif
 endif
 
-dnsmasq:  $(if $(RTCONFIG_DNSSEC_OPENSSL),openssl-1.1.x,) $(if $(RTCONFIG_DNSSEC_NETTLE),nettle,)
+dnsmasq:  $(if $(RTCONFIG_DNSSEC_OPENSSL),openssl-1.1,) $(if $(RTCONFIG_DNSSEC_NETTLE),nettle,)
 	@$(SEP)
 	$(MAKE) -C dnsmasq \
 	COPTS="-DHAVE_BROKEN_RTC -DHAVE_LEASEFILE_EXPIRE -DNO_ID -DNO_AUTH -DNO_INOTIFY -DNO_DUMPFILE -DNO_GMP \
 		$(if $(RTCONFIG_IPV6),-DUSE_IPV6,-DNO_IPV6) \
 		$(if $(RTCONFIG_USB_EXTRAS)||$(RTCONFIG_TR069),,-DNO_SCRIPT) \
 		$(if $(RTCONFIG_USB_EXTRAS),,-DNO_TFTP) \
-		$(if $(RTCONFIG_DNSSEC_OPENSSL),-I$(TOP)/openssl-1.1.x/include -DHAVE_DNSSEC,) \
+		$(if $(RTCONFIG_DNSSEC_OPENSSL),-I$(TOP)/openssl-1.1/include -DHAVE_DNSSEC,) \
 		$(if $(RTCONFIG_DNSSEC_NETTLE),-I$(TOP)/nettle/include -I$(TOP)/gmp -DHAVE_DNSSEC -DHAVE_DNSSEC_STATIC -DNO_GOST,)" \
 	CFLAGS="-Os -ffunction-sections -fdata-sections $(EXTRACFLAGS)" \
 	LDFLAGS="-ffunction-sections -fdata-sections -Wl,--gc-sections $(EXTRALDFLAGS) \
-		$(if $(RTCONFIG_DNSSEC_OPENSSL),-pthread -L$(TOP)/openssl-1.1.x,) \
+		$(if $(RTCONFIG_DNSSEC_OPENSSL),-pthread -L$(TOP)/openssl-1.1,) \
 		$(if $(RTCONFIG_DNSSEC_NETTLE),-L$(TOP)/nettle/lib -L$(TOP)/gmp/.libs,)" \
-	$(if $(RTCONFIG_DNSSEC_OPENSSL),PKG_CONFIG_PATH="$(TOP)/openssl-1.1.x" CRYPTO=openssl,) \
+	$(if $(RTCONFIG_DNSSEC_OPENSSL),PKG_CONFIG_PATH="$(TOP)/openssl-1.1" CRYPTO=openssl,) \
 	$(if $(RTCONFIG_DNSSEC_NETTLE),PKG_CONFIG_PATH="$(TOP)/nettle/lib/pkgconfig",)
 
 dnsmasq-install:
@@ -3996,6 +3997,9 @@ lldpd-0.9.8-install: lldpd-0.9.8
 	install -D lldpd-0.9.8/src/client/.libs/lldpcli $(INSTALLDIR)/lldpd-0.9.8/usr/sbin/lldpcli
 	install -D lldpd-0.9.8/src/daemon/lldpd $(INSTALLDIR)/lldpd-0.9.8/usr/sbin/lldpd
 	install -D lldpd-0.9.8/src/lib/.libs/liblldpctl.so.4.8.0 $(INSTALLDIR)/lldpd-0.9.8/usr/lib/liblldpctl.so.4.8.0
+	$(STRIP) $(INSTALLDIR)/lldpd-0.9.8/usr/sbin/lldpcli
+	$(STRIP) $(INSTALLDIR)/lldpd-0.9.8/usr/sbin/lldpd
+
 	cd $(INSTALLDIR)/lldpd-0.9.8/usr/lib && ln -sf liblldpctl.so.4.8.0 liblldpctl.so && ln -sf liblldpctl.so.4.8.0 liblldpctl.so.4
 
 lldpd-0.9.8-clean:
@@ -4098,12 +4102,17 @@ iproute2-4.3:
 
 iproute2-4.3-install:
 	install -D iproute2-4.3/iproute2-4.3.0/tc/tc $(INSTALLDIR)/iproute2-4.3/usr/sbin/tc
+	install -D iproute2-4.3/iproute2-4.3.0/tc/tc  $(INSTALL_DIR)/iproute2-4.3/usr/sbin/realtc
 	$(STRIP) $(INSTALLDIR)/iproute2-4.3/usr/sbin/tc
+	$(STRIP) $(INSTALLDIR)/iproute2-4.3/usr/sbin/realtc
 	install -D iproute2-4.3/iproute2-4.3.0/ip/ip $(INSTALLDIR)/iproute2-4.3/usr/sbin/ip
 	$(STRIP) $(INSTALLDIR)/iproute2-4.3/usr/sbin/ip
 
 iproute2-4.3-clean:
 	-@$(MAKE) -C iproute2-4.3 clean
+	-rm -f $(INSTALL_DIR)/usr/sbin/tc
+	-rm -f $(INSTALL_DIR)/usr/sbin/realtc
+	-rm -f $(INSTALL_DIR)/usr/sbin/ip
 	-rm -f iproute2-4.3/iproute2-4.3.0/Config
 
 ntpclient: nvram$(BCMEX)$(EX7) shared
@@ -4950,7 +4959,7 @@ openvpn/Makefile:
 		CFLAGS="-O3 -Wall $(EXTRACFLAGS) -ffunction-sections -fdata-sections $(if $(RTCONFIG_BCMARM),-I$(SRCBASE)/shared/bcmwifi/include)" \
 		LDFLAGS="$(EXTRALDFLAGS) -L$(TOP)/nvram$(BCMEX)${EX7} ${EXTRA_NV_LDFLAGS} -lnvram -L$(TOP)/shared -lshared $(if $(RTCONFIG_QTN),-L$(TOP)/libqcsapi_client -lqcsapi_client) -L$(TOP)/zlib -lz -lpthread -ldl -L$(TOP)/lzo/src/.libs -L$(TOP)/openpam/lib/libpam/.libs -ffunction-sections -fdata-sections -Wl,--gc-sections" \
 		CPPFLAGS="-I$(TOP)/lzo/include -I$(TOP)/$(OPENSSLDIR)/include  -I$(TOP)/openpam/include -I$(TOP)/shared -I$(SRCBASE)/include" \
-		IPROUTE="$(if $(RTCONFIG_HND_ROUTER),/bin/ip,/usr/sbin/ip)" IFCONFIG="/sbin/ifconfig" ROUTE="/sbin/route" \
+		IPROUTE="/usr/sbin/ip" IFCONFIG="/sbin/ifconfig" ROUTE="/sbin/route" \
 		$(CONFIGURE) --prefix=/usr --bindir=/usr/sbin --libdir=/usr/lib \
 			--disable-debug --enable-management --enable-plugin-auth-pam --enable-iproute2 \
 			ac_cv_lib_resolv_gethostbyname=no \
@@ -5446,9 +5455,9 @@ curl-7.21.7/Makefile: curl/configure
 
 curl-7.21.7-install: curl-7.21.7
 	@$(SEP)
-	install -D curl-7.21.7/lib/.libs/libcurl.so.4.5.0 $(INSTALLDIR)/curl-7.21.7/usr/lib/libcurl.so.4.5.0
-	$(STRIP) $(INSTALLDIR)/curl-7.21.7/usr/lib/libcurl.so.4.5.0
-	cd $(INSTALLDIR)/curl-7.21.7/usr/lib && ln -sf libcurl.so.4.5.0 libcurl.so && ln -sf libcurl.so.4.5.0 libcurl.so.4
+	install -D curl-7.21.7/lib/.libs/libcurl.so.4.6.0 $(INSTALLDIR)/curl-7.21.7/usr/lib/libcurl.so.4.6.0
+	$(STRIP) $(INSTALLDIR)/curl-7.21.7/usr/lib/libcurl.so.4.6.0
+	cd $(INSTALLDIR)/curl-7.21.7/usr/lib && ln -sf libcurl.so.4.6.0 libcurl.so && ln -sf libcurl.so.4.6.0 libcurl.so.4
 #ifeq ($(RTCONFIG_SPEEDTEST),y)
 	# for speedtest
 	install -D curl-7.21.7/src/.libs/curl $(INSTALLDIR)/curl-7.21.7/usr/sbin/curl
@@ -6921,28 +6930,25 @@ libical-2.0.0-install:
 		ln -sf libicalvcal.so.2.0.0 libicalvcal.so.2
 
 libconfuse/Makefile:
-	cd libconfuse && $(CONFIGURE) \
-		CFLAGS="$(EXTRACFLAGS) -Os -I$(STAGEDIR)/usr/include -ffunction-sections -fdata-sections -fPIC" \
-		LDFLAGS="$(LDFLAGS) -ffunction-sections -fdata-sections -Wl,--gc-sections" \
-		--prefix=/usr --disable-shared \
-		--without-libiconv-prefix --without-libintl-prefix --disable-examples --disable-nls
+	cd libconfuse && $(CONFIGURE) --prefix=/usr --disable-shared \
+		--disable-examples --disable-nls \
+		--without-libiconv-prefix --without-libintl-prefix \
+		CFLAGS="-Wall -Os -ffunction-sections -fdata-sections -fPIC $(EXTRACFLAGS)" \
+		LDFLAGS="-Wl,--gc-sections $(LDFLAGS)"
 
-libconfuse: libiconv-1.14 libconfuse/Makefile
-	@$(SEP)
-	$(MAKE) -C $@
+libconfuse: libconfuse/Makefile
+	$(MAKE) -C $@ && $(MAKE) $@-stage
 
 libconfuse-install:
-	@$(SEP)
 # Do nothing
+	@true
 #	install -D libconfuse/src/.libs/libconfuse.so.1.1.0 $(INSTALLDIR)/libconfuse/usr/lib/libconfuse.so.1.1.0
 #	cd $(INSTALLDIR)/libconfuse/usr/lib && \
 #		ln -sf libconfuse.so.1.1.0 libconfuse.so.1 &&\
 #		ln -sf libconfuse.so.1.1.0 libconfuse.so
 #	$(STRIP) $(INSTALLDIR)/libconfuse/usr/lib/*.so.*
 
-
 libconfuse-clean:
-	@$(SEP)
 	[ ! -f libconfuse/Makefile ] || $(MAKE) -C libconfuse distclean
 	@rm -f libconfuse/Makefile
 
@@ -7186,37 +7192,37 @@ portmap-install:
 	install -D portmap/portmap $(INSTALLDIR)/portmap/usr/sbin/portmap
 	$(STRIP) $(INSTALLDIR)/portmap/usr/sbin/portmap
 
-openssl-1.1.x/Makefile:
-	cd openssl-1.1.x && \
+openssl-1.1/Makefile:
+	cd openssl-1.1 && \
 	./Configure $(HOSTCONFIG) --prefix=/usr --openssldir=/etc/ssl --cross-compile-prefix=' ' \
 	-O2 -ffunction-sections -fdata-sections -Wl,--gc-sections \
 	shared $(OPENSSL_CIPHERS) no-err no-async --api=1.0.0 \
 	no-aria no-sm2 no-sm3 no-sm4 \
 	$(if $(filter y,$(HND_ROUTER)),,-DOPENSSL_PREFER_CHACHA_OVER_GCM)
-	-@$(MAKE) -C openssl-1.1.x depend clean
+	-@$(MAKE) -C openssl-1.1 depend clean
 	@touch $@
 
-openssl-1.1.x: openssl-1.1.x/Makefile
-	$(MAKE) -C openssl-1.1.x $(PARALLEL_BUILD)
+openssl-1.1: openssl-1.1/Makefile
+	$(MAKE) -C openssl-1.1 $(PARALLEL_BUILD)
 
-openssl-1.1.x-clean:
-	[ ! -f openssl-1.1.x/Makefile ] || $(MAKE) -C openssl-1.1.x clean
-	@rm -f openssl-1.1.x/Makefile
+openssl-1.1-clean:
+	[ ! -f openssl-1.1/Makefile ] || $(MAKE) -C openssl-1.1 clean
+	@rm -f openssl-1.1/Makefile
 
-openssl-1.1.x-install:
+openssl-1.1-install:
 	$(SEP)
-	if [ -f openssl-1.1.x/Makefile ] ; then \
-		install -D openssl-1.1.x/libcrypto.so.1.1 $(INSTALLDIR)/openssl-1.1.x/usr/lib/libcrypto.so.1.1 ; \
-		install -D openssl-1.1.x/libssl.so.1.1 $(INSTALLDIR)/openssl-1.1.x/usr/lib/libssl.so.1.1 ; \
-		$(STRIP) $(INSTALLDIR)/openssl-1.1.x/usr/lib/libssl.so.1.1 ; \
-		$(STRIP) $(INSTALLDIR)/openssl-1.1.x/usr/lib/libcrypto.so.1.1 ; \
-		install -D openssl-1.1.x/apps/openssl $(INSTALLDIR)$(INSTALLSUBDIR)/usr/sbin/openssl11 ; \
+	if [ -f openssl-1.1/Makefile ] ; then \
+		install -D openssl-1.1/libcrypto.so.1.1 $(INSTALLDIR)/openssl-1.1/usr/lib/libcrypto.so.1.1 ; \
+		install -D openssl-1.1/libssl.so.1.1 $(INSTALLDIR)/openssl-1.1/usr/lib/libssl.so.1.1 ; \
+		$(STRIP) $(INSTALLDIR)/openssl-1.1/usr/lib/libssl.so.1.1 ; \
+		$(STRIP) $(INSTALLDIR)/openssl-1.1/usr/lib/libcrypto.so.1.1 ; \
+		install -D openssl-1.1/apps/openssl $(INSTALLDIR)$(INSTALLSUBDIR)/usr/sbin/openssl11 ; \
 		$(STRIP) $(INSTALLDIR)$(INSTALLSUBDIR)/usr/sbin/openssl11 ; \
 		chmod 0500 $(INSTALLDIR)$(INSTALLSUBDIR)/usr/sbin/openssl11 ; \
 	fi
 
-openssl-1.1.x-stage:
-	 $(MAKE) -C openssl-1.1.x install_sw INSTALL_PREFIX=$(STAGEDIR)
+openssl-1.1-stage:
+	 $(MAKE) -C openssl-1.1 install_sw INSTALL_PREFIX=$(STAGEDIR)
 
 libvpn: shared nvram$(BCMEX)$(EX7)
 	@$(SEP)
