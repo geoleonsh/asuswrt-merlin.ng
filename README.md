@@ -17,3 +17,28 @@ legacy branch has been dropped.
 Please consult the Wiki for an up-to-date list of supported models:
 
 https://github.com/RMerl/asuswrt-merlin/wiki/Supported-Devices
+
+
+amasmode = getAmasSupportMode();
+		amasRouter = amasmode == 1;
+		if (amasmode != 1)
+			amasRouter = amasmode == 3;
+		if (amasRouter)
+			json_object_object_add(uisupport, "amasRouter", json_object_new_int(1));
+		if ((amasmode - 2) > 1)
+		{
+			if ( !amasmode )
+			{
+				json_object_object_add(uisupport, "amas", json_object_new_int(0));
+				goto noamas;
+			}
+		}
+		else
+			json_object_object_add(uisupport, "amasNode", json_object_new_int(1));
+		json_object_object_add(uisupport, "amas", json_object_new_int(1));
+		if (nvram_match("sw_mode", "1") || (nvram_match("sw_mode", "3") && !nvram_get_int("wlc_psta")))
+			cfgsync = 1;
+		else
+noamas:
+			cfgsync = 0;
+		json_object_object_add(uisupport, "cfg_sync", json_object_new_int(cfgsync));
